@@ -1,0 +1,14 @@
+# Basics
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+
+# Executables
+/map-tester
+/*.test
+
+# gen build folders
+build/
+

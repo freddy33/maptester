@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package maptester;
+
+message TestValue {
+    string s = 1;
+    int64 i = 2;
+}
+
+message IntTestLine {
+    repeated int64 key = 1;
+    TestValue value = 2;
+}
+
+message StringTestLine {
+    string key = 1;
+    TestValue value = 2;
+}
+
+message MapTestResult {
+    int32 nbLines = 1; // Total amount of key, value test generated
+    int32 nbEntries = 2; // The number of map entries after inserting all the above lines in the map
+    int32 nbSameKeys = 3; // Equal keys in the data set. nbLines = nbEntries + nbSameKeys
+    repeated int32 nbOfTimesSameKey = 4; // index 0: How many keys are doubled, index 1: Keys in triple, ...
+}
