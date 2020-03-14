@@ -1,10 +1,12 @@
 package maptester
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/freddy33/maptester/utils"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/logger"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -12,8 +14,11 @@ import (
 	"time"
 )
 
-//const GEN_DATA_SIZE = 10_000_000
-const GEN_DATA_SIZE = 1000000
+const (
+	MAX_CON_THREADS      = 64
+	NB_LINES_PER_THREADS = 16384 * 2 // 2^14
+	GEN_DATA_SIZE        = MAX_CON_THREADS * NB_LINES_PER_THREADS
+)
 
 func GenAllData() {
 	initMemUsage = GetMemUsage()
@@ -22,11 +27,114 @@ func GenAllData() {
 	genIntDataMap("10conflicts3d", GEN_DATA_SIZE, 0.1, 12)
 }
 
+func getDataFilename(name string, size int) string {
+	return filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d.data", name, size))
+}
+
+func getResultsFilename(name string, size int) string {
+	return filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d-results.data", name, size))
+}
+
+func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
+	dataFilename := getDataFilename(name, size)
+	resultFilename := getResultsFilename(name, size)
+	fmt.Printf("Reading int map %s of size %d from data file '%s' and result file '%s'\n",
+		name, size, dataFilename, resultFilename)
+
+	start := time.Now()
+	result := readResults(resultFilename)
+	fmt.Println("Reading result file", resultFilename, ". Took", time.Now().Sub(start))
+
+	m1 := GetMemUsage()
+	start = time.Now()
+
+	im := new(IntMapTestDataSet)
+	im.size = int(result.NbLines)
+	im.keys = make([]Int3Key, im.size)
+	im.values = make([]TestValue, im.size)
+
+	dataFile, err := os.Open(dataFilename)
+	if err != nil {
+		logger.Fatalf("Cannot open data file %s due to %v", dataFilename, err)
+	}
+	defer utils.CloseFile(dataFile)
+	dataReader := bufio.NewReaderSize(dataFile, 8192)
+
+	for i := 0; i < im.size; i++ {
+		data := utils.ReadDataBlockPrefixSize(dataReader)
+		if data == nil {
+			logger.Errorf("Got end of file too early in %s pos %d", dataFilename, i)
+			break
+		}
+		imLine := new(IntTestLine)
+		err = proto.Unmarshal(data, imLine)
+		if err != nil {
+			logger.Fatalf("Cannot read line in data file %s due to %v", dataFilename, err)
+		}
+		for k := 0; k < 3; k++ {
+			im.keys[i][k] = imLine.GetKey()[k]
+		}
+		im.values[i] = *imLine.GetValue()
+	}
+
+	m2 := GetMemUsage()
+	fmt.Println("Finished reading", im.size, "int lines from file ", dataFilename, ". Took", time.Now().Sub(start))
+	m2.Print()
+	fmt.Println("Difference:")
+	m2.Diff(m1).Print()
+
+	return im, result
+}
+
+func readResults(resultFilename string) *MapTestResult {
+	resultFile, err := os.Open(resultFilename)
+	if err != nil {
+		logger.Fatalf("Cannot open result file %s due to %v", resultFilename, err)
+	}
+	defer utils.CloseFile(resultFile)
+	resultData, err := ioutil.ReadAll(resultFile)
+	result := new(MapTestResult)
+	err = proto.Unmarshal(resultData, result)
+	if err != nil {
+		fmt.Printf("Got unmarshal err with data %v\n", resultData)
+		logger.Fatalf("Cannot read data in result file %s due to %v", resultFilename, err)
+	}
+	return result
+}
+
 func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSize int) {
 	fmt.Printf("Generating int map %s of size %d with %v conflicts ratio and %d string length\n",
 		name, size, conflictsRatio, valueStringSize)
 
 	start := time.Now()
+
+	im := createIntMapTest(size, conflictsRatio, valueStringSize)
+
+	m1 := GetMemUsage()
+	fmt.Println("Finished creating", im.size, "int lines in memory. Took", time.Now().Sub(start))
+	m1.Print()
+	fmt.Println("Difference:")
+	m1.Diff(initMemUsage).Print()
+
+	start = time.Now()
+
+	dataFilename := getDataFilename(name, size)
+	fmt.Printf("Dumping int map in %s and calculating assert values\n", dataFilename)
+	mapTestResult := writeDataFile(dataFilename, im)
+
+	m2 := GetMemUsage()
+	fmt.Println("Finished dumping", im.size, "int lines in file ", dataFilename, ". Took", time.Now().Sub(start))
+	m2.Print()
+	fmt.Println("Difference:")
+	m2.Diff(m1).Print()
+
+	resultsFilename := getResultsFilename(name, size)
+	fmt.Println("Final results of", name, "with", size, "saved in", resultsFilename)
+	length := writeResultFile(resultsFilename, mapTestResult)
+	fmt.Println("Result file", resultsFilename, "saved with", length)
+}
+
+func createIntMapTest(size int, conflictsRatio float32, valueStringSize int) *IntMapTestDataSet {
 	im := IntMapTestDataSet{
 		size,
 		make([]Int3Key, size),
@@ -46,39 +154,36 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 			}
 		}
 	}
-	m1 := GetMemUsage()
-	fmt.Println("Finished creating", im.size, "int lines in memory. Took", time.Now().Sub(start))
-	m1.Print()
-	fmt.Println("Difference:")
-	m1.Diff(initMemUsage).Print()
+	return &im
+}
 
-	filename := filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d.data", name, size))
-	fmt.Printf("Dumping int map in %s and calculating assert values\n", filename)
-
-	start = time.Now()
+func writeDataFile(dataFilename string, im *IntMapTestDataSet) *MapTestResult {
 	result := make(map[Int3Key]int, im.size)
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
+	dataFile, err := os.OpenFile(dataFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
 	if err != nil {
-		logger.Fatalf("Cannot open data file %s due to %v", filename, err)
+		logger.Fatalf("Cannot open data file %s due to %v", dataFilename, err)
 	}
-	defer utils.CloseFile(file)
+	defer utils.CloseFile(dataFile)
 	countsSize := make(map[byte]int, 5)
+	offsetsPerThreads := make([]int32, MAX_CON_THREADS)
+	currentPos := int32(0)
+	currentThread := 0
 	for i := 0; i < im.size; i++ {
+		if i%NB_LINES_PER_THREADS == 0 {
+			offsetsPerThreads[currentThread] = currentPos
+			currentThread++
+		}
 		line := IntTestLine{Key: im.keys[i][:], Value: &im.values[i]}
 		data, err := proto.Marshal(&line)
 		if err != nil {
 			logger.Fatalf("Failed to marshall %v due to %v", line, err)
 		}
-		length := utils.WriteNextBytes(file, data)
+		length := utils.WriteDataBlockPrefixSize(dataFile, data)
+		currentPos += int32(length) + 1
 		countsSize[length]++
 		result[im.keys[i]]++
 	}
 	fmt.Println(countsSize)
-	m2 := GetMemUsage()
-	fmt.Println("Finished dumping", im.size, "int lines in file ", filename, ". Took", time.Now().Sub(start))
-	m2.Print()
-	fmt.Println("Difference:")
-	m2.Diff(m1).Print()
 
 	max := 0
 	sameKeysCount := make(map[int]int32, 5)
@@ -100,9 +205,15 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 			}
 		}
 	}
-	resultsFilename := filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d-results.data", name, size))
-	fmt.Println("Final results of", name, "with", size, "saved in", resultsFilename)
-	fmt.Println(proto.MarshalTextString(mapTestResult))
+	mapTestResult.OffsetsPerThreads = make([]int32, len(offsetsPerThreads))
+	for i, offset := range offsetsPerThreads {
+		mapTestResult.OffsetsPerThreads[i] = offset
+	}
+
+	return mapTestResult
+}
+
+func writeResultFile(resultsFilename string, mapTestResult *MapTestResult) int {
 	resultFile, err := os.OpenFile(resultsFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
 	if err != nil {
 		logger.Fatalf("Cannot open data file %s due to %v", resultsFilename, err)
@@ -112,8 +223,7 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 	if err != nil {
 		logger.Fatalf("Failed to marshall results in %s due to %v", resultsFilename, err)
 	}
-	length := utils.WriteNextBytes(resultFile, data)
-	fmt.Println("Result file", resultsFilename, "saved with", length)
+	return utils.WriteDataBlock(resultFile, data)
 }
 
 func randomString(size int) string {

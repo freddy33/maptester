@@ -22,4 +22,5 @@ message MapTestResult {
     int32 nbEntries = 2; // The number of map entries after inserting all the above lines in the map
     int32 nbSameKeys = 3; // Equal keys in the data set. nbLines = nbEntries + nbSameKeys
     repeated int32 nbOfTimesSameKey = 4; // index 0: How many keys are doubled, index 1: Keys in triple, ...
+    repeated int32 offsetsPerThreads = 5; // The offset pos in byte for a given threads
 }

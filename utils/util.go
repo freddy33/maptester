@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"bufio"
 	"github.com/google/logger"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -113,13 +115,40 @@ func ExitOnError(err error) {
 
 var lengthByte = make([]byte, 1)
 
-func WriteNextBytes(file *os.File, bytes []byte) byte {
-	lengthByte[0] = byte(len(bytes))
+func WriteDataBlock(file *os.File, bytes []byte) int {
+	n, err := file.Write(bytes)
+	ExitOnError(err)
+	return n
+}
+
+func WriteDataBlockPrefixSize(file *os.File, bytes []byte) byte {
+	l := len(bytes)
+	if l > 255 {
+		logger.Errorf("Cannot write block bigger than 255. It is %d", l)
+		return 0
+	}
+	lengthByte[0] = byte(l)
 	_, err := file.Write(lengthByte)
 	ExitOnError(err)
 	_, err = file.Write(bytes)
 	ExitOnError(err)
 	return lengthByte[0]
+}
+
+func ReadDataBlockPrefixSize(r *bufio.Reader) []byte {
+	length, err := r.ReadByte()
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		ExitOnError(err)
+	}
+	result := make([]byte, length)
+	_, err = io.ReadFull(r, result)
+	if err != nil {
+		ExitOnError(err)
+	}
+	return result
 }
 
 func CloseFile(file *os.File) {
