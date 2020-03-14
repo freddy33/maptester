@@ -113,12 +113,13 @@ func ExitOnError(err error) {
 
 var lengthByte = make([]byte, 1)
 
-func WriteNextBytes(file *os.File, bytes []byte) {
+func WriteNextBytes(file *os.File, bytes []byte) byte {
 	lengthByte[0] = byte(len(bytes))
 	_, err := file.Write(lengthByte)
 	ExitOnError(err)
 	_, err = file.Write(bytes)
 	ExitOnError(err)
+	return lengthByte[0]
 }
 
 func CloseFile(file *os.File) {

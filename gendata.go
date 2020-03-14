@@ -35,7 +35,7 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 		// Each line is a different value
 		im.values[i] = TestValue{S: randomString(valueStringSize), I: rand.Int63()}
 
-		if i > 1 && rand.Float32() < conflictsRatio {
+		if i > int(float32(size)*conflictsRatio)/2 && rand.Float32() < conflictsRatio {
 			// Let's generate a conflict
 			previousKeyIndex := int(rand.Int31n(int32(i)))
 			im.keys[i] = im.keys[previousKeyIndex]
@@ -61,16 +61,19 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 	if err != nil {
 		logger.Fatalf("Cannot open data file %s due to %v", filename, err)
 	}
-	defer file.Close()
+	defer utils.CloseFile(file)
+	countsSize := make(map[byte]int, 5)
 	for i := 0; i < im.size; i++ {
 		line := IntTestLine{Key: im.keys[i][:], Value: &im.values[i]}
 		data, err := proto.Marshal(&line)
 		if err != nil {
 			logger.Fatalf("Failed to marshall %v due to %v", line, err)
 		}
-		utils.WriteNextBytes(file, data)
+		length := utils.WriteNextBytes(file, data)
+		countsSize[length]++
 		result[im.keys[i]]++
 	}
+	fmt.Println(countsSize)
 	m2 := GetMemUsage()
 	fmt.Println("Finished dumping", im.size, "int lines in file ", filename, ". Took", time.Now().Sub(start))
 	m2.Print()
@@ -97,8 +100,20 @@ func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSiz
 			}
 		}
 	}
+	resultsFilename := filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d-results.data", name, size))
+	fmt.Println("Final results of", name, "with", size, "saved in", resultsFilename)
 	fmt.Println(proto.MarshalTextString(mapTestResult))
-
+	resultFile, err := os.OpenFile(resultsFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
+	if err != nil {
+		logger.Fatalf("Cannot open data file %s due to %v", resultsFilename, err)
+	}
+	defer utils.CloseFile(resultFile)
+	data, err := proto.Marshal(mapTestResult)
+	if err != nil {
+		logger.Fatalf("Failed to marshall results in %s due to %v", resultsFilename, err)
+	}
+	length := utils.WriteNextBytes(resultFile, data)
+	fmt.Println("Result file", resultsFilename, "saved with", length)
 }
 
 func randomString(size int) string {
