@@ -27,6 +27,17 @@ func main() {
 		if !goodData {
 			os.Exit(3)
 		}
+	case "test":
+		if len(os.Args) < 3 {
+			usage()
+			os.Exit(2)
+		}
+		name := os.Args[2]
+		im, res := maptester.ReadIntData(name, maptester.GEN_DATA_SIZE)
+		goodTests := maptester.TestAll(im, res)
+		if !goodTests {
+			os.Exit(4)
+		}
 	default:
 		fmt.Printf("Command '%s' unknown", c)
 		usage()
@@ -35,6 +46,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Printf("Usage: $ maptester [command] [name] [options]\n" +
-		"\tcommand: help, gen, read [name]")
+	fmt.Printf("Usage: $ maptester [command] (name) (options)\n" +
+		"\tcommand: help, gen, read [name], test [name]")
 }
