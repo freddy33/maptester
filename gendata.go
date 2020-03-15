@@ -10,8 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"runtime"
-	"time"
 )
 
 const (
@@ -20,11 +18,12 @@ const (
 	GEN_DATA_SIZE        = MAX_CON_THREADS * NB_LINES_PER_THREADS
 )
 
+var FileNames = [3]string{"noconflicts3d", "10conflicts3d", "25conflicts3d"}
+
 func GenAllData() {
-	initMemUsage = GetMemUsage()
-	initMemUsage.Print()
-	genIntDataMap("noconflicts3d", GEN_DATA_SIZE, 0.0, 12)
-	genIntDataMap("10conflicts3d", GEN_DATA_SIZE, 0.1, 12)
+	generateIntDataMap(FileNames[0], GEN_DATA_SIZE, 0.0, 12)
+	generateIntDataMap(FileNames[1], GEN_DATA_SIZE, 0.1, 12)
+	generateIntDataMap(FileNames[2], GEN_DATA_SIZE, 0.25, 5)
 }
 
 func getDataFilename(name string, size int) string {
@@ -38,16 +37,20 @@ func getResultsFilename(name string, size int) string {
 func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
 	dataFilename := getDataFilename(name, size)
 	resultFilename := getResultsFilename(name, size)
-	fmt.Printf("Reading int map %s of size %d from data file '%s' and result file '%s'\n",
-		name, size, dataFilename, resultFilename)
 
-	start := time.Now()
+	if !utils.FileExists(dataFilename) || !utils.FileExists(resultFilename) {
+		logger.Errorf("Cannot read data for %s of size %d since %s or %s does not exists!",
+			name, size, resultFilename, dataFilename)
+		return nil, nil
+	}
+
+	fmt.Printf("Reading int map %s of size %d\n", name, size)
+	if utils.Verbose {
+		fmt.Printf("Using data file '%s' and result file '%s'\n", dataFilename, resultFilename)
+	}
+
+	perf := NewPerfResult()
 	result := readResults(resultFilename)
-	fmt.Println("Reading result file", resultFilename, ". Took", time.Now().Sub(start))
-
-	m1 := GetMemUsage()
-	start = time.Now()
-
 	im := new(IntMapTestDataSet)
 	im.size = int(result.NbLines)
 	im.keys = make([]Int3Key, im.size)
@@ -77,11 +80,8 @@ func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
 		im.values[i] = *imLine.GetValue()
 	}
 
-	m2 := GetMemUsage()
-	fmt.Println("Finished reading", im.size, "int lines from file ", dataFilename, ". Took", time.Now().Sub(start))
-	m2.Print()
-	fmt.Println("Difference:")
-	m2.Diff(m1).Print()
+	perf.stop(false)
+	perf.display(fmt.Sprintf("reading %s with %d lines", name, im.size))
 
 	return im, result
 }
@@ -102,36 +102,31 @@ func readResults(resultFilename string) *MapTestResult {
 	return result
 }
 
-func genIntDataMap(name string, size int, conflictsRatio float32, valueStringSize int) {
+func generateIntDataMap(name string, size int, conflictsRatio float32, valueStringSize int) {
+	resultFilename := getResultsFilename(name, size)
+	dataFilename := getDataFilename(name, size)
+
+	if utils.FileExists(dataFilename) && utils.FileExists(resultFilename) {
+		logger.Infof("data for %s of size %d already done in %s and %s. Skipping generation.",
+			name, size, resultFilename, dataFilename)
+		return
+	}
+
 	fmt.Printf("Generating int map %s of size %d with %v conflicts ratio and %d string length\n",
 		name, size, conflictsRatio, valueStringSize)
 
-	start := time.Now()
-
+	perf := NewPerfResult()
 	im := createIntMapTest(size, conflictsRatio, valueStringSize)
+	perf.stop(false)
+	perf.display(fmt.Sprintf("%s in memory %d lines", name, size))
 
-	m1 := GetMemUsage()
-	fmt.Println("Finished creating", im.size, "int lines in memory. Took", time.Now().Sub(start))
-	m1.Print()
-	fmt.Println("Difference:")
-	m1.Diff(initMemUsage).Print()
-
-	start = time.Now()
-
-	dataFilename := getDataFilename(name, size)
+	perf.init()
 	fmt.Printf("Dumping int map in %s and calculating assert values\n", dataFilename)
 	mapTestResult := writeDataFile(dataFilename, im)
-
-	m2 := GetMemUsage()
-	fmt.Println("Finished dumping", im.size, "int lines in file ", dataFilename, ". Took", time.Now().Sub(start))
-	m2.Print()
-	fmt.Println("Difference:")
-	m2.Diff(m1).Print()
-
-	resultsFilename := getResultsFilename(name, size)
-	fmt.Println("Final results of", name, "with", size, "saved in", resultsFilename)
-	length := writeResultFile(resultsFilename, mapTestResult)
-	fmt.Println("Result file", resultsFilename, "saved with", length)
+	length := writeResultFile(resultFilename, mapTestResult)
+	fmt.Println("Result file", resultFilename, "saved with", length)
+	perf.stop(false)
+	perf.display(fmt.Sprintf("%s saved %d lines", name, size))
 }
 
 func createIntMapTest(size int, conflictsRatio float32, valueStringSize int) *IntMapTestDataSet {
@@ -141,7 +136,7 @@ func createIntMapTest(size int, conflictsRatio float32, valueStringSize int) *In
 		make([]TestValue, size)}
 	for i := 0; i < im.size; i++ {
 		// Each line is a different value
-		im.values[i] = TestValue{S: randomString(valueStringSize), I: rand.Int63()}
+		im.values[i] = TestValue{SVal: randomString(valueStringSize), Idx: int64(i)}
 
 		if i > int(float32(size)*conflictsRatio)/2 && rand.Float32() < conflictsRatio {
 			// Let's generate a conflict
@@ -246,39 +241,4 @@ func randomChar() byte {
 		result = byte(97 + rand.Int31n(26))
 	}
 	return result
-}
-
-type MemUsage struct {
-	Alloc      uint64
-	TotalAlloc uint64
-	Sys        uint64
-	NumGC      uint32
-}
-
-func (m MemUsage) Diff(o MemUsage) MemUsage {
-	return MemUsage{
-		m.Alloc - o.Alloc,
-		m.TotalAlloc - o.TotalAlloc,
-		m.Sys - o.Sys,
-		m.NumGC - o.NumGC,
-	}
-}
-
-func (m MemUsage) Print() {
-	fmt.Printf("Alloc = %v", convertIfNeeded(m.Alloc))
-	fmt.Printf("\tTotalAlloc = %v", convertIfNeeded(m.TotalAlloc))
-	fmt.Printf("\tSys = %v", convertIfNeeded(m.Sys))
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
-}
-
-var initMemUsage MemUsage
-
-func GetMemUsage() MemUsage {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return MemUsage{m.Alloc, m.TotalAlloc, m.Sys, m.NumGC}
-}
-
-func convertIfNeeded(b uint64) uint64 {
-	return b
 }

@@ -10,7 +10,20 @@ import (
 	"path/filepath"
 )
 
+var Verbose = false
 var Log = logger.Init("util", true, false, ioutil.Discard)
+
+func FileExists(path string) bool {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	if err != nil {
+		Log.Errorf("testing if file %s exists unknown error %v", path, err)
+		return false
+	}
+	return true
+}
 
 func DirExists(dir string, subPath string) (bool, string) {
 	p := filepath.Join(dir, subPath)

@@ -3,8 +3,8 @@ syntax = "proto3";
 package maptester;
 
 message TestValue {
-    string s = 1;
-    int64 i = 2;
+    string sVal = 1;
+    int64 idx = 2;
 }
 
 message IntTestLine {
