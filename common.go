@@ -7,22 +7,24 @@ import (
 )
 
 type MapTestConf struct {
-	initSizeRatio  float32
 	nbWriteThreads int
 	nbReadThreads  int
+	nbReadTest     int
 }
 
 type MapPerfResult struct {
-	start         time.Time
-	startMem      MemUsage
-	totalExecTime time.Duration
-	errors        bool
-	mem           MemUsage
-}
-
-type TestMapValue struct {
-	val   *TestValue
-	count uint32
+	nbExpectedMapEntries        int
+	nbMapEntries                int
+	start                       time.Time
+	startMem                    MemUsage
+	totalExecTime               time.Duration
+	errorsKeyNotFound           int32
+	errorsKeyNotSame            int32
+	errorsValuesEqual           int32
+	errorsValuesNotEqual        int32
+	errorsPointerValuesNotEqual int32
+	errorsSizeNotMatch          int32
+	mem                         MemUsage
 }
 
 type MemUsage struct {
@@ -31,6 +33,10 @@ type MemUsage struct {
 	Sys        uint64
 	NumGC      uint32
 }
+
+/********************************************
+MemUsage Functions
+*********************************************/
 
 func (m MemUsage) Diff(o MemUsage) MemUsage {
 	return MemUsage{
@@ -48,6 +54,10 @@ func GetMemUsage() MemUsage {
 	return MemUsage{m.Alloc, m.TotalAlloc, m.Sys, m.NumGC}
 }
 
+/********************************************
+MapPerfResult Functions
+*********************************************/
+
 func NewPerfResult() *MapPerfResult {
 	perf := new(MapPerfResult)
 	perf.init()
@@ -57,22 +67,37 @@ func NewPerfResult() *MapPerfResult {
 func (mp *MapPerfResult) init() {
 	mp.start = time.Now()
 	mp.startMem = GetMemUsage()
-	mp.errors = false
+	mp.errorsKeyNotFound = 0
+	mp.errorsKeyNotSame = 0
+	mp.errorsValuesEqual = 0
+	mp.errorsValuesNotEqual = 0
+	mp.errorsPointerValuesNotEqual = 0
+	mp.errorsSizeNotMatch = 0
 }
 
-func (mp *MapPerfResult) stop(error bool) {
-	if error {
-		mp.errors = error
-	}
+func (mp *MapPerfResult) stop() {
 	mp.totalExecTime = time.Now().Sub(mp.start)
 	mp.mem = GetMemUsage().Diff(mp.startMem)
+	if mp.nbMapEntries != mp.nbExpectedMapEntries {
+		fmt.Printf("Size %d != %d\n", mp.nbMapEntries, mp.nbExpectedMapEntries)
+		mp.errorsSizeNotMatch++
+	}
 }
 
 func (mp *MapPerfResult) display(name string) {
 	q := "no"
-	if mp.errors {
-		q = "some"
+	if mp.NbErrors() > 0 {
+		q = fmt.Sprintf("[f=%d k=%d ve=%d vn=%d pvn=%d s=%d]",
+			mp.errorsKeyNotFound, mp.errorsKeyNotSame,
+			mp.errorsValuesEqual, mp.errorsValuesNotEqual, mp.errorsPointerValuesNotEqual,
+			mp.errorsSizeNotMatch)
 	}
-	fmt.Printf("%s: Took %v with %s error(s) and %d MB alloc mem\n",
-		name, mp.totalExecTime, q, mp.mem.TotalAlloc/(1024*1024))
+	fmt.Printf("%s - %d: Took %v with %s error(s) and %d MB alloc mem\n",
+		name, mp.nbMapEntries, mp.totalExecTime, q, mp.mem.TotalAlloc/(1024*1024))
+}
+
+func (perf *MapPerfResult) NbErrors() int {
+	return int(perf.errorsKeyNotFound + perf.errorsKeyNotSame +
+		perf.errorsValuesEqual + perf.errorsValuesNotEqual + perf.errorsPointerValuesNotEqual +
+		perf.errorsSizeNotMatch)
 }

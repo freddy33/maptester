@@ -80,7 +80,7 @@ func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
 		im.values[i] = *imLine.GetValue()
 	}
 
-	perf.stop(false)
+	perf.stop()
 	perf.display(fmt.Sprintf("reading %s with %d lines", name, im.size))
 
 	return im, result
@@ -117,7 +117,7 @@ func generateIntDataMap(name string, size int, conflictsRatio float32, valueStri
 
 	perf := NewPerfResult()
 	im := createIntMapTest(size, conflictsRatio, valueStringSize)
-	perf.stop(false)
+	perf.stop()
 	perf.display(fmt.Sprintf("%s in memory %d lines", name, size))
 
 	perf.init()
@@ -125,7 +125,7 @@ func generateIntDataMap(name string, size int, conflictsRatio float32, valueStri
 	mapTestResult := writeDataFile(dataFilename, im)
 	length := writeResultFile(resultFilename, mapTestResult)
 	fmt.Println("Result file", resultFilename, "saved with", length)
-	perf.stop(false)
+	perf.stop()
 	perf.display(fmt.Sprintf("%s saved %d lines", name, size))
 }
 
