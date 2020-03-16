@@ -14,6 +14,11 @@ func main() {
 	switch c {
 	case "help":
 		usage()
+	case "clean":
+		maptester.DeleteAllData()
+	case "regen":
+		maptester.DeleteAllData()
+		maptester.GenAllData()
 	case "gen":
 		maptester.GenAllData()
 	case "read":
@@ -22,17 +27,13 @@ func main() {
 			os.Exit(2)
 		}
 		name := os.Args[2]
-		im, res := maptester.ReadIntData(name, maptester.GEN_DATA_SIZE)
+		im, res := maptester.ReadIntData(name, maptester.GenDataSize)
 		goodData := maptester.Verify(name, im, res)
 		if !goodData {
 			os.Exit(3)
 		}
 	case "test":
-		name := "all"
-		if len(os.Args) > 2 {
-			name = os.Args[2]
-		}
-		if !maptester.TestAll(name) {
+		if !maptester.TestAll() {
 			os.Exit(4)
 		}
 	default:

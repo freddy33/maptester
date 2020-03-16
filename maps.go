@@ -3,7 +3,6 @@ package maptester
 import (
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 type MapKey interface {
@@ -27,8 +26,10 @@ type ConcurrentInt3Map interface {
 	Size() int
 }
 
+var nbMapTypes = 3
+
 func CreateAllMaps(initSize int) []ConcurrentInt3Map {
-	res := make([]ConcurrentInt3Map, 3)
+	res := make([]ConcurrentInt3Map, nbMapTypes)
 
 	res[0] = &BasicNonConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
 	res[1] = &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
@@ -40,7 +41,7 @@ func CreateAllMaps(initSize int) []ConcurrentInt3Map {
 TestMapValue Functions
 *********************************************/
 
-func (tmv *TestMapValue) IsOverwriten() bool {
+func (tmv *TestMapValue) IsOverwritten() bool {
 	return tmv.overwritten
 }
 
@@ -48,8 +49,7 @@ func (tmv *TestMapValue) overwriteVal(newVal *TestValue) {
 	// Add info of overwrite count
 	tmv.overwritten = true
 	atomic.AddUint32(&tmv.count, 1)
-	p := unsafe.Pointer(&tmv.val)
-	atomic.StorePointer(&p, unsafe.Pointer(newVal))
+	tmv.val = newVal
 }
 
 /********************************************
@@ -105,7 +105,7 @@ type BasicConcurrentIntMap struct {
 }
 
 func (b *BasicConcurrentIntMap) SupportConcurrentWrite() bool {
-	return false
+	return true
 }
 
 func (b *BasicConcurrentIntMap) Name() string {
@@ -185,6 +185,9 @@ func (s *SyncIntMap) Store(key Int3Key, value *TestMapValue) {
 
 func (s *SyncIntMap) LoadOrStore(key Int3Key, value *TestMapValue) (*TestMapValue, bool) {
 	actualVal, loaded := s.m.LoadOrStore(key, value)
+	if !loaded {
+		atomic.AddUint32(&s.entries, 1)
+	}
 	return actualVal.(*TestMapValue), loaded
 }
 
@@ -193,9 +196,11 @@ func (s *SyncIntMap) Delete(key Int3Key) {
 }
 
 func (s *SyncIntMap) Size() int {
-	s.entries = 0
+	if s.entries > 0 {
+		return int(s.entries)
+	}
 	s.m.Range(func(key, value interface{}) bool {
-		atomic.AddUint32(&s.entries, 1)
+		s.entries++
 		return true
 	})
 	return int(s.entries)

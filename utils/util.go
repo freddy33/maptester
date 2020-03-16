@@ -25,6 +25,14 @@ func FileExists(path string) bool {
 	return true
 }
 
+func DeleteFile(path string) bool {
+	if FileExists(path) {
+		ExitOnError(os.Remove(path))
+		return true
+	}
+	return false
+}
+
 func DirExists(dir string, subPath string) (bool, string) {
 	p := filepath.Join(dir, subPath)
 	fi, err := os.Stat(p)
@@ -118,6 +126,10 @@ func CreateFile(dir, fileName string) *os.File {
 
 func GetGenDataDir() string {
 	return getOrCreateBuildSubDir("gendata")
+}
+
+func GetOutPerfDir() string {
+	return getOrCreateBuildSubDir("perf")
 }
 
 func ExitOnError(err error) {

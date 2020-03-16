@@ -13,17 +13,28 @@ import (
 )
 
 const (
-	MAX_CON_THREADS      = 64
-	NB_LINES_PER_THREADS = 16384 * 2 // 2^15
-	GEN_DATA_SIZE        = MAX_CON_THREADS * NB_LINES_PER_THREADS
+	MaxConThreads     = 64
+	NbLinesPerThreads = 65536
+	GenDataSize       = MaxConThreads * NbLinesPerThreads
 )
 
 var FileNames = [3]string{"noconflicts3d", "10conflicts3d", "25conflicts3d"}
 
+func DeleteAllData() {
+	for _, name := range FileNames {
+		DeleteDataFiles(name)
+	}
+}
+
+func DeleteDataFiles(name string) {
+	utils.DeleteFile(getResultsFilename(name, GenDataSize))
+	utils.DeleteFile(getDataFilename(name, GenDataSize))
+}
+
 func GenAllData() {
-	generateIntDataMap(FileNames[0], GEN_DATA_SIZE, 0.0, 12)
-	generateIntDataMap(FileNames[1], GEN_DATA_SIZE, 0.1, 12)
-	generateIntDataMap(FileNames[2], GEN_DATA_SIZE, 0.25, 5)
+	generateIntDataMap(FileNames[0], GenDataSize, 0.0, 12)
+	generateIntDataMap(FileNames[1], GenDataSize, 0.1, 10)
+	generateIntDataMap(FileNames[2], GenDataSize, 0.25, 5)
 }
 
 func getDataFilename(name string, size int) string {
@@ -80,8 +91,11 @@ func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
 		im.values[i] = *imLine.GetValue()
 	}
 
+	// It's not a map yet just lines
+	perf.nbExpectedMapEntries = im.size
+	perf.nbMapEntries = im.size
 	perf.stop()
-	perf.display(fmt.Sprintf("reading %s with %d lines", name, im.size))
+	perf.display(name)
 
 	return im, result
 }
@@ -160,11 +174,11 @@ func writeDataFile(dataFilename string, im *IntMapTestDataSet) *MapTestResult {
 	}
 	defer utils.CloseFile(dataFile)
 	countsSize := make(map[byte]int, 5)
-	offsetsPerThreads := make([]int32, MAX_CON_THREADS)
+	offsetsPerThreads := make([]int32, MaxConThreads)
 	currentPos := int32(0)
 	currentThread := 0
 	for i := 0; i < im.size; i++ {
-		if i%NB_LINES_PER_THREADS == 0 {
+		if i%NbLinesPerThreads == 0 {
 			offsetsPerThreads[currentThread] = currentPos
 			currentThread++
 		}
