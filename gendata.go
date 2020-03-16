@@ -14,11 +14,11 @@ import (
 
 const (
 	MaxConThreads     = 64
-	NbLinesPerThreads = 65536
+	NbLinesPerThreads = 32768
 	GenDataSize       = MaxConThreads * NbLinesPerThreads
 )
 
-var FileNames = [3]string{"noconflicts3d", "10conflicts3d", "25conflicts3d"}
+var FileNames = [4]string{"noconflicts3d", "10conflicts3d", "25conflicts3d", "50conflicts3d"}
 
 func DeleteAllData() {
 	for _, name := range FileNames {
@@ -32,9 +32,10 @@ func DeleteDataFiles(name string) {
 }
 
 func GenAllData() {
-	generateIntDataMap(FileNames[0], GenDataSize, 0.0, 12)
+	generateIntDataMap(FileNames[0], GenDataSize, 0.0, 10)
 	generateIntDataMap(FileNames[1], GenDataSize, 0.1, 10)
-	generateIntDataMap(FileNames[2], GenDataSize, 0.25, 5)
+	generateIntDataMap(FileNames[2], GenDataSize, 0.25, 10)
+	generateIntDataMap(FileNames[3], GenDataSize, 0.5, 10)
 }
 
 func getDataFilename(name string, size int) string {
@@ -56,6 +57,7 @@ func ReadIntData(name string, size int) (*IntMapTestDataSet, *MapTestResult) {
 	}
 
 	fmt.Printf("Reading int map %s of size %d\n", name, size)
+	//noinspection GoBoolExpressions
 	if utils.Verbose {
 		fmt.Printf("Using data file '%s' and result file '%s'\n", dataFilename, resultFilename)
 	}
@@ -193,6 +195,15 @@ func writeDataFile(dataFilename string, im *IntMapTestDataSet) *MapTestResult {
 		result[im.keys[i]]++
 	}
 	fmt.Println(countsSize)
+
+	// Verify all the not key are not present
+	for i := 0; i < im.size; i++ {
+		notKey := im.getNotKey(i)
+		_, ok := result[notKey]
+		if ok {
+			logger.Fatalf("Found a not key %v!", notKey)
+		}
+	}
 
 	max := 0
 	sameKeysCount := make(map[int]int32, 5)

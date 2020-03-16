@@ -10,6 +10,8 @@ type MapTestConf struct {
 	nbWriteThreads int
 	nbReadThreads  int
 	nbReadTest     int
+	initRatio      float32
+	percentMiss    float32
 }
 
 type MemUsage struct {
@@ -35,11 +37,26 @@ type MapPerfTestResult struct {
 	finalMem MemUsage
 
 	errorsKeyNotFound           int32
+	errorsKeyFound              int32
 	errorsKeyNotSame            int32
 	errorsValuesEqual           int32
 	errorsValuesNotEqual        int32
 	errorsPointerValuesNotEqual int32
 	errorsSizeNotMatch          int32
+}
+
+/********************************************
+MapTestConf Functions
+*********************************************/
+
+func NewMapTestConf(defaultConf MapTestConf, nbWriteThreads int) MapTestConf {
+	return MapTestConf{
+		nbWriteThreads: nbWriteThreads,
+		nbReadThreads:  defaultConf.nbReadThreads,
+		nbReadTest:     defaultConf.nbReadTest,
+		initRatio:      defaultConf.initRatio,
+		percentMiss:    defaultConf.percentMiss,
+	}
 }
 
 /********************************************
@@ -76,6 +93,7 @@ func (mp *MapPerfTestResult) init() {
 	mp.startTime = time.Now()
 	mp.startMem = GetMemUsage()
 	mp.errorsKeyNotFound = 0
+	mp.errorsKeyFound = 0
 	mp.errorsKeyNotSame = 0
 	mp.errorsValuesEqual = 0
 	mp.errorsValuesNotEqual = 0
@@ -103,8 +121,8 @@ func (mp *MapPerfTestResult) memDiff() MemUsage {
 func (mp *MapPerfTestResult) display(name string) {
 	q := "no"
 	if mp.NbErrors() > 0 {
-		q = fmt.Sprintf("[f=%d k=%d ve=%d vn=%d pvn=%d s=%d]",
-			mp.errorsKeyNotFound, mp.errorsKeyNotSame,
+		q = fmt.Sprintf("[nf=%d f=%d k=%d ve=%d vn=%d pvn=%d s=%d]",
+			mp.errorsKeyNotFound, mp.errorsKeyFound, mp.errorsKeyNotSame,
 			mp.errorsValuesEqual, mp.errorsValuesNotEqual, mp.errorsPointerValuesNotEqual,
 			mp.errorsSizeNotMatch)
 	}
@@ -113,7 +131,7 @@ func (mp *MapPerfTestResult) display(name string) {
 }
 
 func (perf *MapPerfTestResult) NbErrors() int {
-	return int(perf.errorsKeyNotFound + perf.errorsKeyNotSame +
+	return int(perf.errorsKeyNotFound + perf.errorsKeyFound + perf.errorsKeyNotSame +
 		perf.errorsValuesEqual + perf.errorsValuesNotEqual + perf.errorsPointerValuesNotEqual +
 		perf.errorsSizeNotMatch)
 }

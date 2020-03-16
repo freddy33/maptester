@@ -28,12 +28,22 @@ type ConcurrentInt3Map interface {
 
 var nbMapTypes = 3
 
-func CreateAllMaps(initSize int) []ConcurrentInt3Map {
-	res := make([]ConcurrentInt3Map, nbMapTypes)
+func CreateAllMaps(initSize int, withNonConcurrent bool) []ConcurrentInt3Map {
+	nbMaps := nbMapTypes
+	if !withNonConcurrent {
+		nbMaps--
+	}
+	res := make([]ConcurrentInt3Map, nbMaps)
 
-	res[0] = &BasicNonConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
-	res[1] = &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
-	res[2] = &SyncIntMap{}
+	idx := 0
+	if withNonConcurrent {
+		res[idx] = &BasicNonConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
+		idx++
+	}
+	res[idx] = &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
+	idx++
+	res[idx] = &SyncIntMap{}
+	idx++
 	return res
 }
 
