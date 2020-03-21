@@ -1,6 +1,7 @@
 package maptester
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/freddy33/maptester/utils"
 	"github.com/google/logger"
@@ -39,6 +40,8 @@ func getAllRunnableTests() []*MapPerfTestResult {
 	return result
 }
 
+var MaxTests = 20
+
 func TestAll() bool {
 	globalStopWatch := NewStopWatch()
 	globalStopWatch.init()
@@ -46,6 +49,9 @@ func TestAll() bool {
 
 	allPass := true
 	perfTests := getAllRunnableTests()
+	csvResultFile := openCsvFile(len(perfTests))
+	defer utils.CloseFile(csvResultFile)
+	idx := 0
 	for _, dc := range DataConfigurations {
 		currentDataName := dc.GetDataFileName()
 		im, report := ReadIntData(currentDataName, GenDataSize)
@@ -60,6 +66,14 @@ func TestAll() bool {
 				allPass = false
 			}
 			globalLines += perfTest.nbMapEntries
+			perfTest.dumpPerfData(idx, csvResultFile)
+			idx++
+			if idx > MaxTests {
+				break
+			}
+		}
+		if idx > MaxTests {
+			break
 		}
 	}
 
@@ -73,34 +87,73 @@ func TestAll() bool {
 	globalStopWatch.setNbLines(globalLines)
 	globalStopWatch.display("All tests")
 
-	dumpPerfData(perfTests)
-
 	return allPass
 }
 
-func dumpPerfData(perfTests []*MapPerfTestResult) {
+const SEP_CSV = ";"
+
+func openCsvFile(nbTests int) *os.File {
 	// Mon Jan 2 15:04:05 -0700 MST 2006
 	perfOutFileName := filepath.Join(utils.GetOutPerfDir(), fmt.Sprintf("maptests-%03d-%08d-%s.csv",
-		len(perfTests), GenDataSize, time.Now().Format("2006-01-02_15_04_05")))
+		nbTests, GenDataSize, time.Now().Format("2006-01-02_15_04_05")))
 
 	outFile, err := os.OpenFile(perfOutFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
 	if err != nil {
-		logger.Fatalf("Cannot create perf out file %s due to %v", perfOutFileName, err)
+		logger.Fatalf("cannot create perf out file %q due to %v", perfOutFileName, err)
+		return nil
 	}
-	defer utils.CloseFile(outFile)
 
-	utils.WriteNextString(outFile, "Idx;data;map;lines;entries;"+
-		"init ratio;percent miss;write threads;read threads;nb read;"+
-		"exec duration;mem;gc;errors\n")
-	for i, perf := range perfTests {
-		conf := perf.runConf.testConf
-		diff := perf.memDiff()
-		utils.WriteNextString(outFile,
-			fmt.Sprintf("%2d;%s;%s;%d;%d;%f;%f;%d;%d;%d;%d;%d;%d;%d;\n",
-				i, perf.runConf.GetRunName(), perf.mapTypeName, perf.dataReport.NbLines, perf.nbMapEntries,
-				conf.initRatio, conf.percentMiss, conf.nbWriteThreads, conf.nbReadThreads, conf.nbReadTest*conf.nbReadThreads,
-				perf.execDuration().Microseconds(), diff.TotalAlloc, diff.NumGC, perf.NbErrors()))
+	var headerRow bytes.Buffer
+	// Test index
+	headerRow.WriteString("idx")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("name")
+	headerRow.WriteString(SEP_CSV)
+	// The dimensions
+	for _, dimension := range Dimensions {
+		headerRow.WriteString(dimension)
+		headerRow.WriteString(SEP_CSV)
 	}
+	// The test env
+	headerRow.WriteString("map type")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("nb lines")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("nb map entries")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("nb write threads")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("nb read threads")
+	headerRow.WriteString(SEP_CSV)
+	// The measurements
+	headerRow.WriteString("nb read done")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("exec duration")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("memory usage")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("GC done")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("errors")
+	headerRow.WriteString(SEP_CSV)
+	headerRow.WriteString("\n")
+	utils.WriteNextString(outFile, headerRow.String())
+
+	return outFile
+}
+
+func (mp *MapPerfTestResult) dumpPerfData(idx int, outFile *os.File) {
+	dataConf := mp.runConf.dataConf
+	testConf := mp.runConf.testConf
+	diff := mp.memDiff()
+	utils.WriteNextString(outFile,
+		fmt.Sprintf("%d;%s;%s;%f;%f;%f;%f;%d;%d;%s;%d;%d;%d;%d;%d;%d;%d;%d;%d;\n",
+			idx, mp.Name(),
+			dataConf.keyType, testConf.initRatio, dataConf.conflictRatio,
+			mp.runConf.readWriteThreadRatio, testConf.percentMiss, mp.runConf.readWriteNbRatio, dataConf.valueSize,
+			mp.mapTypeName, mp.dataReport.NbLines, mp.nbMapEntries,
+			testConf.nbWriteThreads, testConf.nbReadThreads, testConf.nbReadTest*testConf.nbReadThreads,
+			mp.execDuration().Microseconds(), diff.TotalAlloc, diff.NumGC, mp.NbErrors()))
 }
 
 func (mp *MapPerfTestResult) testConcurrentMap(im *IntMapTestDataSet) {
@@ -133,7 +186,6 @@ func (mp *MapPerfTestResult) testConcurrentMap(im *IntMapTestDataSet) {
 	atomic.AddUint32(&doneWriting, 1)
 	readWaitGroup.Wait()
 
-	mp.nbExpectedMapEntries = int(mp.dataReport.GetNbEntries())
 	mp.nbMapEntries = m.Size()
 	mp.stop()
 	mp.display(mp.Name())

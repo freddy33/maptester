@@ -184,3 +184,14 @@ func WriteNextString(file *os.File, text string) {
 	_, err := file.WriteString(text)
 	ExitOnError(err)
 }
+
+const DefaultEpsilon = 1e-4
+
+func Float32Equal(a, b float32) bool {
+	return Float32EqualEpsilon(a, b, DefaultEpsilon)
+}
+
+func Float32EqualEpsilon(a, b float32, epsilon float32) bool {
+	delta := a - b
+	return (delta >= 0.0 && delta < epsilon) || (delta < 0.0 && delta > -epsilon)
+}

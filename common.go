@@ -168,7 +168,7 @@ func (mp *MapPerfTestResult) init() {
 }
 
 func (mp *MapPerfTestResult) wasDone() bool {
-	return mp.stopWatch.wasDone()
+	return mp.stopWatch != nil && mp.stopWatch.wasDone()
 }
 
 func (mp *MapPerfTestResult) setNbLines(nbLines int) {
