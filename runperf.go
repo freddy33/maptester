@@ -25,7 +25,7 @@ func getAllRunnableTests() []*MapPerfTestResult {
 	// Filter key types and concurrent write for non concurrent maps
 	result := make([]*MapPerfTestResult, 0, len(RunConfigurations)*2)
 	for _, rc := range RunConfigurations {
-		// support only int3d for now
+		// TODO: support only int3d for now
 		if rc.dataConf.keyType != KeyTypes[0] {
 			continue
 		}
@@ -64,6 +64,10 @@ func TestAll() bool {
 	}
 	fmt.Println("Starting execution of", totalTests, "tests")
 	for _, dc := range DataConfigurations {
+		// TODO: support only int3d for now
+		if dc.keyType != KeyTypes[0] {
+			continue
+		}
 		currentDataName := dc.GetDataFileName()
 		im, report := ReadIntData(currentDataName, GenDataSize)
 		for _, perfTest := range perfTests {

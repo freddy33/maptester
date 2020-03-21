@@ -186,6 +186,7 @@ func DeleteDataFiles(name string) {
 
 func GenAllData() {
 	for name, dc := range DataConfigurations {
+		// TODO: Support only int3d for now
 		if dc.keyType == KeyTypes[0] {
 			generateIntDataMap(name, GenDataSize, dc.conflictRatio, dc.valueSize)
 		}
