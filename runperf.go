@@ -25,6 +25,10 @@ func getAllRunnableTests() []*MapPerfTestResult {
 	// Filter key types and concurrent write for non concurrent maps
 	result := make([]*MapPerfTestResult, 0, len(RunConfigurations)*2)
 	for _, rc := range RunConfigurations {
+		// support only int3d for now
+		if rc.dataConf.keyType != KeyTypes[0] {
+			continue
+		}
 		for _, mt := range MapTypes {
 			if !mt.isConcurrentWrite && rc.testConf.nbWriteThreads > 1 {
 				// skip cannot be used
@@ -40,7 +44,7 @@ func getAllRunnableTests() []*MapPerfTestResult {
 	return result
 }
 
-var MaxTests = 20
+var MaxTests = 5000
 
 func TestAll() bool {
 	globalStopWatch := NewStopWatch()
@@ -49,9 +53,16 @@ func TestAll() bool {
 
 	allPass := true
 	perfTests := getAllRunnableTests()
-	csvResultFile := openCsvFile(len(perfTests))
+	totalTests := len(perfTests)
+	csvResultFile := openCsvFile(totalTests)
 	defer utils.CloseFile(csvResultFile)
+
+	fmt.Println("Found", totalTests, "runnable tests for", GenDataSize)
 	idx := 0
+	if totalTests > MaxTests {
+		totalTests = MaxTests
+	}
+	fmt.Println("Starting execution of", totalTests, "tests")
 	for _, dc := range DataConfigurations {
 		currentDataName := dc.GetDataFileName()
 		im, report := ReadIntData(currentDataName, GenDataSize)
@@ -68,6 +79,7 @@ func TestAll() bool {
 			globalLines += perfTest.nbMapEntries
 			perfTest.dumpPerfData(idx, csvResultFile)
 			idx++
+			fmt.Println("Did test", idx, "out of", totalTests, "reached", (100.0*float32(idx))/float32(totalTests), "%")
 			if idx > MaxTests {
 				break
 			}

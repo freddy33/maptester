@@ -37,10 +37,10 @@ var KeyTypes = []string{"int3d", "string10", "string25"}
 
 // Used in Run Configuration
 var InitRatioValues = []float32{0.1, 0.75, 1.0}
-var NbReadThreads = []int{32, 64}
-var NbWriteThreads = []int{1, 16, 32}
+var NbReadThreads = []int{16, 32, 64}
+var NbWriteThreads = []int{1, 8, 16, 32}
 var PercentMissValues = []float32{0.0, 0.1, 0.5}
-var NbReadWriteRatio = []int{1, 16, 32}
+var NbReadWriteRatio = []int{1, 16, 32, 64}
 
 // Data file aggregate key type, conflict ratio and value size
 var DataConfigurations map[string]*DataConfiguration
