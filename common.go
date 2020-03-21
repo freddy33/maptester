@@ -148,8 +148,9 @@ func (mp *MapPerfTestResult) Name() string {
 
 func (mp *MapPerfTestResult) fill(report *DataFileReport) {
 	mp.dataReport = report
-	mp.stopWatch = NewStopWatch()
-	mp.stopWatch.setNbLines(int(report.NbLines))
+	stopWatch := NewStopWatch()
+	mp.stopWatch = stopWatch
+	stopWatch.setNbLines(int(report.NbLines))
 	mp.nbExpectedMapEntries = int(report.NbEntries)
 	mp.mapInitSize = int(float32(report.NbEntries) * mp.runConf.testConf.initRatio)
 }
