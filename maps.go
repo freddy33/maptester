@@ -1,9 +1,20 @@
 package maptester
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 )
+
+type MapType struct {
+	name              string
+	isConcurrentWrite bool
+}
+
+var MapTypes = []MapType{
+	{"basic", false},
+	{"RWMutex", true},
+	{"syncMap", true}}
 
 type MapKey interface {
 	Hash() int
@@ -27,6 +38,20 @@ type ConcurrentInt3Map interface {
 }
 
 var nbMapTypes = 3
+
+func (mp *MapPerfTestResult) CreateMap() ConcurrentInt3Map {
+	switch mp.mapTypeName {
+	case "basic":
+		return &BasicNonConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, mp.mapInitSize)}
+	case "RWMutex":
+		return &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, mp.mapInitSize)}
+	case "syncMap":
+		return &SyncIntMap{}
+	default:
+		log.Fatalf("Map type %q unknown", mp.mapTypeName)
+		return nil
+	}
+}
 
 func CreateAllMaps(initSize int, withNonConcurrent bool) []ConcurrentInt3Map {
 	nbMaps := nbMapTypes

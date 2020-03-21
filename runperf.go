@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func Verify(name string, im *IntMapTestDataSet, result *MapTestResult) bool {
+func Verify(name string, im *IntMapTestDataSet, result *DataFileReport) bool {
 	if int32(im.size) != result.NbLines {
 		logger.Errorf("Dataset %s does not have matching lines %d != %d", name, im.size, result.NbLines)
 		return false
@@ -20,62 +20,58 @@ func Verify(name string, im *IntMapTestDataSet, result *MapTestResult) bool {
 	return true
 }
 
-const NbConfTest = 4
-
-var writeThreads = [NbConfTest]int{4, 8, 16, 32}
-
-var defaultConf = MapTestConf{
-	nbReadThreads: 32,
-	nbReadTest:    GenDataSize / 8,
-	initRatio:     0.1,
-	percentMiss:   0.3,
+func getAllRunnableTests() []*MapPerfTestResult {
+	// Filter key types and concurrent write for non concurrent maps
+	result := make([]*MapPerfTestResult, 0, len(RunConfigurations)*2)
+	for _, rc := range RunConfigurations {
+		for _, mt := range MapTypes {
+			if !mt.isConcurrentWrite && rc.testConf.nbWriteThreads > 1 {
+				// skip cannot be used
+				continue
+			}
+			mp := MapPerfTestResult{
+				runConf:     rc,
+				mapTypeName: mt.name,
+			}
+			result = append(result, &mp)
+		}
+	}
+	return result
 }
 
 func TestAll() bool {
+	globalStopWatch := NewStopWatch()
+	globalStopWatch.init()
+	globalLines := 0
+
 	allPass := true
-
-	nbDataFileNames := len(FileNames)
-
-	// Doing only one test for not conc map
-	didNotConcurrent := false
-	nbTests := 1 + NbConfTest*nbDataFileNames*(nbMapTypes-1)
-	perfTests := make([]*MapPerfTestResult, 0, nbTests)
-
-	for _, name := range FileNames {
-
-		im, result := ReadIntData(name, GenDataSize)
-
-		for confIdx := 0; confIdx < NbConfTest; confIdx++ {
-			initSize := int(float32(result.GetNbEntries()) * defaultConf.initRatio)
-			maps := CreateAllMaps(initSize, !didNotConcurrent)
-			for _, m := range maps {
-				var conf MapTestConf
-				if m.SupportConcurrentWrite() {
-					conf = NewMapTestConf(defaultConf, writeThreads[confIdx])
-				} else {
-					conf = NewMapTestConf(defaultConf, 1)
-					didNotConcurrent = true
-				}
-
-				perf := MapPerfTestResult{
-					conf: conf, dataName: name, mapTestResult: result, mapTypeName: m.Name(),
-				}
-				perf.testConcurrentMap(m, im)
-				perfTests = append(perfTests, &perf)
-
-				if perf.NbErrors() > 0 {
-					allPass = false
-				}
+	perfTests := getAllRunnableTests()
+	for _, dc := range DataConfigurations {
+		currentDataName := dc.GetDataFileName()
+		im, report := ReadIntData(currentDataName, GenDataSize)
+		for _, perfTest := range perfTests {
+			if perfTest.runConf.dataConf.GetDataFileName() != currentDataName {
+				// Not here
+				continue
 			}
+			perfTest.fill(report)
+			perfTest.testConcurrentMap(im)
+			if perfTest.NbErrors() > 0 {
+				allPass = false
+			}
+			globalLines += perfTest.nbMapEntries
 		}
 	}
 
-	if len(perfTests) != nbTests {
-		logger.Errorf("Expected to run %d tests but got only %d", nbTests, len(perfTests))
-		allPass = false
+	for _, perfTest := range perfTests {
+		if !perfTest.wasDone() {
+			logger.Errorf("Expected to run %s - %s test", perfTest.runConf.GetRunName(), perfTest.mapTypeName)
+		}
 	}
 
-	fmt.Printf("All test took %v\n", perfTests[len(perfTests)-1].stopTime.Sub(perfTests[0].startTime))
+	globalStopWatch.stop()
+	globalStopWatch.setNbLines(globalLines)
+	globalStopWatch.display("All tests")
 
 	dumpPerfData(perfTests)
 
@@ -84,8 +80,8 @@ func TestAll() bool {
 
 func dumpPerfData(perfTests []*MapPerfTestResult) {
 	// Mon Jan 2 15:04:05 -0700 MST 2006
-	perfOutFileName := filepath.Join(utils.GetOutPerfDir(), fmt.Sprintf("map-%02d-%02d-%d-%s.csv",
-		nbMapTypes, len(FileNames), GenDataSize, time.Now().Format("2006-01-02_15_04_05")))
+	perfOutFileName := filepath.Join(utils.GetOutPerfDir(), fmt.Sprintf("maptests-%03d-%08d-%s.csv",
+		len(perfTests), GenDataSize, time.Now().Format("2006-01-02_15_04_05")))
 
 	outFile, err := os.OpenFile(perfOutFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0665)
 	if err != nil {
@@ -97,47 +93,50 @@ func dumpPerfData(perfTests []*MapPerfTestResult) {
 		"init ratio;percent miss;write threads;read threads;nb read;"+
 		"exec duration;mem;gc;errors\n")
 	for i, perf := range perfTests {
-		conf := perf.conf
-		diff := perf.finalMem.Diff(perf.startMem)
+		conf := perf.runConf.testConf
+		diff := perf.memDiff()
 		utils.WriteNextString(outFile,
 			fmt.Sprintf("%2d;%s;%s;%d;%d;%f;%f;%d;%d;%d;%d;%d;%d;%d;\n",
-				i, perf.dataName, perf.mapTypeName, perf.mapTestResult.NbLines, perf.nbMapEntries,
+				i, perf.runConf.GetRunName(), perf.mapTypeName, perf.dataReport.NbLines, perf.nbMapEntries,
 				conf.initRatio, conf.percentMiss, conf.nbWriteThreads, conf.nbReadThreads, conf.nbReadTest*conf.nbReadThreads,
 				perf.execDuration().Microseconds(), diff.TotalAlloc, diff.NumGC, perf.NbErrors()))
 	}
 }
 
-func (perf *MapPerfTestResult) testConcurrentMap(m ConcurrentInt3Map, im *IntMapTestDataSet) {
-	perf.init()
+func (mp *MapPerfTestResult) testConcurrentMap(im *IntMapTestDataSet) {
+	m := mp.CreateMap()
+	conf := mp.runConf.testConf
+
+	mp.init()
 	readWaitGroup := new(sync.WaitGroup)
 	writeWaitGroup := new(sync.WaitGroup)
 	doneWriting := uint32(0)
 	if m.SupportConcurrentWrite() {
-		size := im.size / perf.conf.nbWriteThreads
-		writeWaitGroup.Add(perf.conf.nbWriteThreads)
-		for i := 0; i < perf.conf.nbWriteThreads; i++ {
+		size := im.size / conf.nbWriteThreads
+		writeWaitGroup.Add(conf.nbWriteThreads)
+		for i := 0; i < conf.nbWriteThreads; i++ {
 			offset := size * i
-			go testLoadAndStore(m, im, offset, size, perf, writeWaitGroup)
+			go testLoadAndStore(m, im, offset, size, mp, writeWaitGroup)
 		}
 	} else {
 		writeWaitGroup.Add(1)
-		testLoadAndStore(m, im, 0, im.size, perf, writeWaitGroup)
+		testLoadAndStore(m, im, 0, im.size, mp, writeWaitGroup)
 		doneWriting = uint32(1)
 	}
 
-	readWaitGroup.Add(perf.conf.nbReadThreads)
-	for i := 0; i < perf.conf.nbReadThreads; i++ {
-		go testLoad(m, im, perf.conf.nbReadTest, &doneWriting, perf, readWaitGroup)
+	readWaitGroup.Add(conf.nbReadThreads)
+	for i := 0; i < conf.nbReadThreads; i++ {
+		go testLoad(m, im, conf.nbReadTest, &doneWriting, mp, readWaitGroup)
 	}
 
 	writeWaitGroup.Wait()
 	atomic.AddUint32(&doneWriting, 1)
 	readWaitGroup.Wait()
 
-	perf.nbExpectedMapEntries = int(perf.mapTestResult.GetNbEntries())
-	perf.nbMapEntries = m.Size()
-	perf.stop()
-	perf.display(m.Name())
+	mp.nbExpectedMapEntries = int(mp.dataReport.GetNbEntries())
+	mp.nbMapEntries = m.Size()
+	mp.stop()
+	mp.display(mp.Name())
 }
 
 func testLoadAndStore(m ConcurrentInt3Map, im *IntMapTestDataSet, offset, size int, perf *MapPerfTestResult, wg *sync.WaitGroup) {
@@ -171,7 +170,7 @@ func testLoad(m ConcurrentInt3Map, im *IntMapTestDataSet, nbTest int, doneWritin
 	for i := 0; i < nbTest; i++ {
 		idx := int(rand.Int31n(int32(im.size)))
 		var key Int3Key
-		notKey := rand.Float32() < perf.conf.percentMiss
+		notKey := rand.Float32() < perf.runConf.testConf.percentMiss
 		if notKey {
 			key = im.getNotKey(idx)
 		} else {

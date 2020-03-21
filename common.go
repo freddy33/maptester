@@ -2,6 +2,7 @@ package maptester
 
 import (
 	"fmt"
+	"github.com/google/logger"
 	"runtime"
 	"time"
 )
@@ -21,20 +22,35 @@ type MemUsage struct {
 	NumGC      uint32
 }
 
-type MapPerfTestResult struct {
-	conf          MapTestConf
-	dataName      string
-	mapTestResult *MapTestResult
-	mapTypeName   string
+type StopWatch interface {
+	init()
+	wasDone() bool
+	stop()
+	setNbLines(nbLines int)
+	execDuration() time.Duration
+	memDiff() MemUsage
+	display(name string)
+}
 
-	nbExpectedMapEntries int
-	nbMapEntries         int
-
+type PerfResult struct {
 	startTime time.Time
 	stopTime  time.Time
 
 	startMem MemUsage
 	finalMem MemUsage
+
+	nbLines int
+}
+
+type MapPerfTestResult struct {
+	runConf     *RunConfiguration
+	dataReport  *DataFileReport
+	mapTypeName string
+
+	stopWatch            StopWatch
+	mapInitSize          int
+	nbExpectedMapEntries int
+	nbMapEntries         int
 
 	errorsKeyNotFound           int32
 	errorsKeyFound              int32
@@ -43,20 +59,6 @@ type MapPerfTestResult struct {
 	errorsValuesNotEqual        int32
 	errorsPointerValuesNotEqual int32
 	errorsSizeNotMatch          int32
-}
-
-/********************************************
-MapTestConf Functions
-*********************************************/
-
-func NewMapTestConf(defaultConf MapTestConf, nbWriteThreads int) MapTestConf {
-	return MapTestConf{
-		nbWriteThreads: nbWriteThreads,
-		nbReadThreads:  defaultConf.nbReadThreads,
-		nbReadTest:     defaultConf.nbReadTest,
-		initRatio:      defaultConf.initRatio,
-		percentMiss:    defaultConf.percentMiss,
-	}
 }
 
 /********************************************
@@ -80,18 +82,81 @@ func GetMemUsage() MemUsage {
 }
 
 /********************************************
-MapPerfTestResult Functions
+PerfResult Functions
 *********************************************/
 
-func NewPerfResult() *MapPerfTestResult {
-	perf := new(MapPerfTestResult)
+var EpochZero = time.Unix(0, 0)
+
+func NewStopWatch() StopWatch {
+	perf := new(PerfResult)
 	perf.init()
 	return perf
 }
 
+func (pr *PerfResult) init() {
+	pr.startTime = time.Now()
+	pr.stopTime = EpochZero
+	pr.startMem = GetMemUsage()
+	pr.nbLines = 0
+}
+
+func (pr *PerfResult) setNbLines(nbLines int) {
+	pr.nbLines = nbLines
+}
+
+func (pr *PerfResult) stop() {
+	if pr.stopTime != EpochZero {
+		logger.Warningf("Stopping stopwatch multiple time!")
+	}
+	pr.stopTime = time.Now()
+	pr.finalMem = GetMemUsage()
+}
+
+func (pr *PerfResult) wasDone() bool {
+	return pr.stopTime != EpochZero
+}
+
+func (pr *PerfResult) execDuration() time.Duration {
+	if pr.stopTime == EpochZero {
+		logger.Fatalf("Extracting stopwatch execution time before calling stop()!")
+	}
+	return pr.stopTime.Sub(pr.startTime)
+}
+
+func (pr *PerfResult) memDiff() MemUsage {
+	if pr.stopTime == EpochZero {
+		logger.Fatalf("Extracting stopwatch memory difference before calling stop()!")
+	}
+	return pr.finalMem.Diff(pr.startMem)
+}
+
+func (pr *PerfResult) display(name string) {
+	if pr.stopTime == EpochZero {
+		logger.Fatalf("Calling stopwatch display before calling stop()!")
+	}
+	fmt.Printf("%s - %d: Took %v and %d MB alloc\n",
+		name, pr.nbLines, pr.execDuration(), pr.memDiff().TotalAlloc/(1024*1024))
+}
+
+/********************************************
+MapPerfTestResult Functions
+*********************************************/
+
+func (mp *MapPerfTestResult) Name() string {
+	return fmt.Sprintf("%s-%s", mp.runConf.GetRunName(), mp.mapTypeName)
+}
+
+func (mp *MapPerfTestResult) fill(report *DataFileReport) {
+	mp.dataReport = report
+	mp.stopWatch = NewStopWatch()
+	mp.stopWatch.setNbLines(int(report.NbLines))
+	mp.nbExpectedMapEntries = int(report.NbEntries)
+	mp.mapInitSize = int(float32(report.NbEntries) * mp.runConf.testConf.initRatio)
+}
+
 func (mp *MapPerfTestResult) init() {
-	mp.startTime = time.Now()
-	mp.startMem = GetMemUsage()
+	mp.stopWatch.init()
+
 	mp.errorsKeyNotFound = 0
 	mp.errorsKeyFound = 0
 	mp.errorsKeyNotSame = 0
@@ -101,21 +166,28 @@ func (mp *MapPerfTestResult) init() {
 	mp.errorsSizeNotMatch = 0
 }
 
+func (mp *MapPerfTestResult) wasDone() bool {
+	return mp.stopWatch.wasDone()
+}
+
+func (mp *MapPerfTestResult) setNbLines(nbLines int) {
+	mp.stopWatch.setNbLines(nbLines)
+}
+
 func (mp *MapPerfTestResult) stop() {
-	mp.stopTime = time.Now()
-	mp.finalMem = GetMemUsage()
+	mp.stopWatch.stop()
 	if mp.nbMapEntries != mp.nbExpectedMapEntries {
-		fmt.Printf("Size %d != %d\n", mp.nbMapEntries, mp.nbExpectedMapEntries)
+		logger.Errorf("Size %d != %d\n", mp.nbMapEntries, mp.nbExpectedMapEntries)
 		mp.errorsSizeNotMatch++
 	}
 }
 
 func (mp *MapPerfTestResult) execDuration() time.Duration {
-	return mp.stopTime.Sub(mp.startTime)
+	return mp.stopWatch.execDuration()
 }
 
 func (mp *MapPerfTestResult) memDiff() MemUsage {
-	return mp.finalMem.Diff(mp.startMem)
+	return mp.stopWatch.memDiff()
 }
 
 func (mp *MapPerfTestResult) display(name string) {
@@ -130,8 +202,8 @@ func (mp *MapPerfTestResult) display(name string) {
 		name, mp.nbMapEntries, mp.execDuration(), q, mp.memDiff().TotalAlloc/(1024*1024))
 }
 
-func (perf *MapPerfTestResult) NbErrors() int {
-	return int(perf.errorsKeyNotFound + perf.errorsKeyFound + perf.errorsKeyNotSame +
-		perf.errorsValuesEqual + perf.errorsValuesNotEqual + perf.errorsPointerValuesNotEqual +
-		perf.errorsSizeNotMatch)
+func (mp *MapPerfTestResult) NbErrors() int {
+	return int(mp.errorsKeyNotFound + mp.errorsKeyFound + mp.errorsKeyNotSame +
+		mp.errorsValuesEqual + mp.errorsValuesNotEqual + mp.errorsPointerValuesNotEqual +
+		mp.errorsSizeNotMatch)
 }

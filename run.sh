@@ -1,10 +1,8 @@
 #!/bin/bash
 
-go build
-
 if [ "$1" == "all" ]; then
-    ./maptester regen
-    ./maptester test
+    go run runner/main.go regen
+    go run runner/main.go test
 else
-    ./maptester $@
+    go run runner/main.go $@
 fi

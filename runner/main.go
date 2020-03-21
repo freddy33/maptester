@@ -14,6 +14,8 @@ func main() {
 	switch c {
 	case "help":
 		usage()
+	case "show":
+		maptester.DisplayConfigurations()
 	case "clean":
 		maptester.DeleteAllData()
 	case "regen":
@@ -37,7 +39,7 @@ func main() {
 			os.Exit(4)
 		}
 	default:
-		fmt.Printf("Command '%s' unknown", c)
+		fmt.Printf("Command %q unknown\n", c)
 		usage()
 		os.Exit(1)
 	}
@@ -45,5 +47,5 @@ func main() {
 
 func usage() {
 	fmt.Printf("Usage: $ maptester [command] (name) (options)\n" +
-		"\tcommand: help, gen, read [name], test [name]")
+		"\tcommand: help, show, clean, gen, regen, read [name], test\n")
 }
