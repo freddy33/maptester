@@ -44,7 +44,7 @@ func getAllRunnableTests() []*MapPerfTestResult {
 	return result
 }
 
-var MaxTests = 5000
+var MaxTests = 100000
 
 func TestAll() bool {
 	globalStopWatch := NewStopWatch()
