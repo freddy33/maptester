@@ -14,7 +14,7 @@ import (
 
 const (
 	MaxConThreads     = 64
-	NbLinesPerThreads = 16384
+	NbLinesPerThreads = 8192
 	GenDataSize       = MaxConThreads * NbLinesPerThreads
 )
 
@@ -29,18 +29,18 @@ var Dimensions = []string{
 }
 
 // Used in data generation
-var ConflictRatioValues = []float32{0.0, 0.1, 0.5}
-var ValueSize = []int{5, 12, 75}
+var ConflictRatioValues = []float32{0.10, 0.25, 0.5, 0.7}
+var ValueSize = []int{12}
 
 // Used in Perf Test Execution
 var KeyTypes = []string{"int3d", "string10", "string25"}
 
 // Used in Run Configuration
-var InitRatioValues = []float32{0.1, 0.75, 1.0}
-var NbReadThreads = []int{16, 32, 64}
-var NbWriteThreads = []int{1, 8, 16, 32}
-var PercentMissValues = []float32{0.0, 0.1, 0.5}
-var NbReadWriteRatio = []int{1, 16, 32, 64}
+var InitRatioValues = []float32{0.1, 0.25, 0.5, 0.75}
+var NbReadThreads = []int{1, 2, 4, 8, 10, 12, 14, 16}
+var NbWriteThreads = []int{1, 2, 4, 8, 10, 12, 14, 16}
+var PercentMissValues = []float32{0.0, 0.1, 0.25, 0.5}
+var NbReadWriteRatio = []int{2, 4, 6, 8, 16, 32, 64}
 
 // Data file aggregate key type, conflict ratio and value size
 var DataConfigurations map[string]*DataConfiguration
@@ -102,41 +102,11 @@ func init() {
 	RunConfigurations = make(map[string]*RunConfiguration)
 	for _, dc := range DataConfigurations {
 		for _, ir := range InitRatioValues {
-			// Do all init ratio only for conflicts 0% and 50%
-			// Do all conflicts only for init ratio 10% and 75%
-			if !utils.Float32Equal(ir, 0.1) && !utils.Float32Equal(ir, 0.75) &&
-				!utils.Float32Equal(dc.conflictRatio, 0.0) && !utils.Float32Equal(dc.conflictRatio, 0.5) {
-				continue
-			}
-			threadRatioDone := make([]float32, 0, 8)
 			for _, nbrt := range NbReadThreads {
 				for _, nbwt := range NbWriteThreads {
 					readWriteThreadRatio := float32(nbrt) / float32(nbwt)
-					alreadyIn := false
-					for _, ratioDone := range threadRatioDone {
-						if utils.Float32Equal(ratioDone, readWriteThreadRatio) {
-							alreadyIn = true
-							break
-						}
-					}
-					if alreadyIn {
-						continue
-					}
-					threadRatioDone = append(threadRatioDone, readWriteThreadRatio)
 					for _, pm := range PercentMissValues {
-						// Do all for miss ratio below 50%
-						// for other miss ratio only for init ratio of 10% and conflicts 50%
-						if !utils.Float32Equal(pm, 0.5) &&
-							!utils.Float32Equal(ir, 0.1) && !utils.Float32Equal(dc.conflictRatio, 0.5) {
-							continue
-						}
-						for rwrIdx, rwr := range NbReadWriteRatio {
-							// Do read write ratio lowest and max for all
-							// for other miss ratio only for init ratio of 10% and conflicts 50%
-							if rwrIdx != 0 && rwrIdx != len(NbReadWriteRatio)-1 &&
-								!utils.Float32Equal(ir, 0.1) && !utils.Float32Equal(dc.conflictRatio, 0.5) {
-								continue
-							}
+						for _, rwr := range NbReadWriteRatio {
 							nbReadTest := int(GenDataSize * rwr / nbrt)
 							rc := RunConfiguration{
 								dataConf:             dc,
