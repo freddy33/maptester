@@ -34,11 +34,14 @@ func getAllRunnableTests() []*MapPerfTestResult {
 				// skip cannot be used
 				continue
 			}
-			mp := MapPerfTestResult{
-				runConf:     rc,
-				mapTypeName: mt.name,
+			use := rand.Float32() < RatioToRun
+			if use {
+				mp := MapPerfTestResult{
+					runConf:     rc,
+					mapTypeName: mt.name,
+				}
+				result = append(result, &mp)
 			}
-			result = append(result, &mp)
 		}
 	}
 	return result

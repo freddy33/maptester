@@ -14,7 +14,7 @@ import (
 
 const (
 	MaxConThreads     = 64
-	NbLinesPerThreads = 8192
+	NbLinesPerThreads = 128 * 3 * 5 * 7
 	GenDataSize       = MaxConThreads * NbLinesPerThreads
 )
 
@@ -37,10 +37,12 @@ var KeyTypes = []string{"int3d", "string10", "string25"}
 
 // Used in Run Configuration
 var InitRatioValues = []float32{0.1, 0.25, 0.5, 0.75}
-var NbReadThreads = []int{1, 2, 4, 8, 10, 12, 14, 16}
-var NbWriteThreads = []int{1, 2, 4, 8, 10, 12, 14, 16}
+var NbReadThreads = []int{1, 2, 4, 8, 10, 12, 14, 16, 20, 24, 28, 32}
+var NbWriteThreads = []int{1, 2, 4, 8, 10, 12, 14, 16, 20, 24, 28, 32}
 var PercentMissValues = []float32{0.0, 0.1, 0.25, 0.5}
 var NbReadWriteRatio = []int{2, 4, 6, 8, 16, 32, 64}
+
+var RatioToRun = float32(0.2)
 
 // Data file aggregate key type, conflict ratio and value size
 var DataConfigurations map[string]*DataConfiguration
@@ -138,7 +140,7 @@ func DisplayConfigurations() {
 		}
 	}
 	fmt.Printf("Generated %d data configurations, out of which %d done for int3d\n", len(DataConfigurations), nbInt3d)
-	fmt.Printf("Generated %d run configurations\n", len(RunConfigurations))
+	fmt.Printf("Generated %d run configurations and will select %f out of it\n", len(RunConfigurations), RatioToRun)
 	allTests := getAllRunnableTests()
 	fmt.Printf("With maps got %d runnable tests: Which means %f hours\n", len(allTests), float32(len(allTests)*10)/(60.0*60.0))
 }
