@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/freddy33/maptester"
 	"os"
+	"runtime"
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 			os.Exit(3)
 		}
 	case "test":
+		runtime.GOMAXPROCS(maptester.MaxConThreads * 2)
 		if !maptester.TestAll() {
 			os.Exit(4)
 		}

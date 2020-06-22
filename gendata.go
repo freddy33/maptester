@@ -173,6 +173,16 @@ func getReportFilename(name string, size int) string {
 	return filepath.Join(utils.GetGenDataDir(), fmt.Sprintf("%s-%d-report.data", name, size))
 }
 
+func ReadIntDataFileReport(name string, size int) *DataFileReport {
+	reportFilename := getReportFilename(name, size)
+	if !utils.FileExists(reportFilename) {
+		logger.Errorf("Cannot read data file report for %s of size %d since %s does not exists!",
+			name, size, reportFilename)
+		return nil
+	}
+	return readResults(reportFilename)
+}
+
 func ReadIntData(name string, size int) (*IntMapTestDataSet, *DataFileReport) {
 	dataFilename := getDataFilename(name, size)
 	reportFilename := getReportFilename(name, size)

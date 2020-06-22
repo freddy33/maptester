@@ -105,10 +105,10 @@ func GetBuildDir() string {
 	return p
 }
 
-func GetConfDir() string {
-	b, p := DirExists(GetGitRootDir(), "conf")
+func GetDataDir() string {
+	b, p := DirExists(GetGitRootDir(), "data")
 	if !b {
-		Log.Fatalf("conf dir %s does not exists!", p)
+		Log.Fatalf("data dir %s does not exists!", p)
 		return ""
 	}
 	return p

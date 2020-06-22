@@ -144,9 +144,10 @@ func openCsvFile(nbTests int) *os.File {
 	headerRow.WriteString(SEP_CSV)
 	headerRow.WriteString("nb read threads")
 	headerRow.WriteString(SEP_CSV)
-	// The measurements
+	// Calculated
 	headerRow.WriteString("nb read done")
 	headerRow.WriteString(SEP_CSV)
+	// The measurements
 	headerRow.WriteString("exec duration")
 	headerRow.WriteString(SEP_CSV)
 	headerRow.WriteString("memory usage")
