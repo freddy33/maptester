@@ -87,23 +87,76 @@ func (agg *AggregateMeasurement) display() {
 	fmt.Println(agg.count, agg.avgExec(), agg.avgMem())
 }
 
+const (
+	Float32Multiplier = 1000
+	NbAggregatorMaps  = 4
+	InitRatioMap      = 0
+	ConflictRatioMap  = 1
+	NbWriteThreadsMap = 2
+	NbReadThreadsMap  = 3
+)
+
+func (line *PerfLine) getMapKey(mapIdx int) int {
+	switch mapIdx {
+	case InitRatioMap:
+		return int(line.InitRatio * Float32Multiplier)
+	case ConflictRatioMap:
+		return int(line.ConflictRatio * Float32Multiplier)
+	case NbWriteThreadsMap:
+		return line.NbWriteThreads
+	case NbReadThreadsMap:
+		return line.NbReadThreads
+	default:
+		log.Fatalf("map index %d not supported", mapIdx)
+	}
+	return -1
+}
+
+func getDisplayName(mapIdx int) string {
+	switch mapIdx {
+	case InitRatioMap:
+		return "init ratio"
+	case ConflictRatioMap:
+		return "conflict ratio"
+	case NbWriteThreadsMap:
+		return "nb write threads"
+	case NbReadThreadsMap:
+		return "nb read threads"
+	default:
+		log.Fatalf("map index %d not supported", mapIdx)
+	}
+	return ""
+}
+
+func getDisplayFromKey(mapIdx int, key int) string {
+	switch mapIdx {
+	case InitRatioMap:
+		return fmt.Sprintf("%.2f", float32(key)/float32(Float32Multiplier))
+	case ConflictRatioMap:
+		return fmt.Sprintf("%.2f", float32(key)/float32(Float32Multiplier))
+	case NbWriteThreadsMap:
+		return fmt.Sprintf("%d", key)
+	case NbReadThreadsMap:
+		return fmt.Sprintf("%d", key)
+	default:
+		log.Fatalf("map index %d not supported", mapIdx)
+	}
+	return ""
+}
+
 type Aggregator struct {
-	mapType           string
-	total             *AggregateMeasurement
-	perInitRatio      map[float32]*AggregateMeasurement
-	perConflictRatio  map[float32]*AggregateMeasurement
-	perNbWriteThreads map[int]*AggregateMeasurement
-	perNbReadThreads  map[int]*AggregateMeasurement
+	mapType string
+	total   *AggregateMeasurement
+	maps    [NbAggregatorMaps]map[int]*AggregateMeasurement
 }
 
 func NewAggregator(mapTypeName string) *Aggregator {
 	agg := new(Aggregator)
 	agg.mapType = mapTypeName
 	agg.total = new(AggregateMeasurement)
-	agg.perInitRatio = make(map[float32]*AggregateMeasurement, 10)
-	agg.perConflictRatio = make(map[float32]*AggregateMeasurement, 10)
-	agg.perNbWriteThreads = make(map[int]*AggregateMeasurement, 10)
-	agg.perNbReadThreads = make(map[int]*AggregateMeasurement, 10)
+	for idx := range agg.maps {
+		agg.maps[idx] = make(map[int]*AggregateMeasurement, 10)
+	}
 	return agg
 }
 
@@ -111,56 +164,27 @@ func (agg *Aggregator) addMeasurement(line PerfLine) {
 	if line.MapTypeName != agg.mapType {
 		return
 	}
-
 	agg.total.addMeasurement(line)
-
-	perf, found := agg.perInitRatio[line.InitRatio]
-	if !found {
-		perf = new(AggregateMeasurement)
-		agg.perInitRatio[line.InitRatio] = perf
+	for idx, aggMap := range agg.maps {
+		key := line.getMapKey(idx)
+		perf, found := aggMap[key]
+		if !found {
+			perf = new(AggregateMeasurement)
+			aggMap[key] = perf
+		}
+		perf.addMeasurement(line)
 	}
-	perf.addMeasurement(line)
-
-	perf, found = agg.perConflictRatio[line.ConflictRatio]
-	if !found {
-		perf = new(AggregateMeasurement)
-		agg.perConflictRatio[line.ConflictRatio] = perf
-	}
-	perf.addMeasurement(line)
-
-	perf, found = agg.perNbWriteThreads[line.NbWriteThreads]
-	if !found {
-		perf = new(AggregateMeasurement)
-		agg.perNbWriteThreads[line.NbWriteThreads] = perf
-	}
-	perf.addMeasurement(line)
-
-	perf, found = agg.perNbReadThreads[line.NbReadThreads]
-	if !found {
-		perf = new(AggregateMeasurement)
-		agg.perNbReadThreads[line.NbReadThreads] = perf
-	}
-	perf.addMeasurement(line)
 }
 
 func (agg *Aggregator) display() {
 	fmt.Print(agg.mapType, ":")
 	agg.total.display()
-	for k, v := range agg.perInitRatio {
-		fmt.Print(k, ":")
-		v.display()
-	}
-	for k, v := range agg.perConflictRatio {
-		fmt.Print(k, ":")
-		v.display()
-	}
-	for k, v := range agg.perNbWriteThreads {
-		fmt.Print(k, ":")
-		v.display()
-	}
-	for k, v := range agg.perNbReadThreads {
-		fmt.Print(k, ":")
-		v.display()
+	for idx, aggMap := range agg.maps {
+		fmt.Println(idx, len(aggMap))
+		for k, v := range aggMap {
+			fmt.Print(k, ":")
+			v.display()
+		}
 	}
 }
 
@@ -179,41 +203,52 @@ func AnalyzePerfFiles(fileNames []string) {
 	}
 	defer utils.CloseFile(outFile)
 
+	utils.WriteNextString(outFile, "Analysis for")
+	for _, filename := range fileNames {
+		utils.WriteNextString(outFile, fmt.Sprintf(",%s", filename))
+	}
+	utils.WriteNextString(outFile, "\n")
+
 	utils.WriteNextString(outFile, "map type,total,avg exec,avg mem\n")
 	for _, agg := range aggregators {
 		utils.WriteNextString(outFile, fmt.Sprintf("%s,total,%f,%f\n", agg.mapType, agg.total.avgExec(), agg.total.avgMem()))
 	}
 	utils.WriteNextString(outFile, "\n")
 
-	keysNbWriteThreads := make([]int, 0, len(aggregators[1].perNbWriteThreads))
-	for _, agg := range aggregators {
-		for k, _ := range agg.perNbWriteThreads {
-			keysNbWriteThreads = appendIfNotPresent(keysNbWriteThreads, k)
-		}
-	}
-	sort.Ints(keysNbWriteThreads)
-	utils.WriteNextString(outFile, "map type nb write threads")
-	for k := range keysNbWriteThreads {
-		utils.WriteNextString(outFile, fmt.Sprintf(",%d", k))
-	}
-	utils.WriteNextString(outFile, "\n")
-	for _, agg := range aggregators {
-		utils.WriteNextString(outFile, fmt.Sprintf("%s", agg.mapType))
-		for k := range keysNbWriteThreads {
-			val, ok := agg.perNbWriteThreads[k]
-			if ok {
-				utils.WriteNextString(outFile, fmt.Sprintf(",%f", val.avgExec()))
-			} else {
-				utils.WriteNextString(outFile, ",")
+	for idx := InitRatioMap; idx < NbAggregatorMaps; idx++ {
+		keys := make([]int, 0, len(aggregators[1].maps[idx]))
+		for _, agg := range aggregators {
+			for k := range agg.maps[idx] {
+				keys = appendIfNotPresentInt(keys, k)
 			}
 		}
+		sort.Ints(keys)
+		utils.WriteNextString(outFile, "map type ")
+		utils.WriteNextString(outFile, getDisplayName(idx))
+		for _, k := range keys {
+			utils.WriteNextString(outFile, fmt.Sprintf(",%s", getDisplayFromKey(idx, k)))
+		}
 		utils.WriteNextString(outFile, "\n")
+
+		for _, agg := range aggregators {
+			utils.WriteNextString(outFile, fmt.Sprintf("%s", agg.mapType))
+			for _, k := range keys {
+				val, ok := agg.maps[idx][k]
+				if ok {
+					utils.WriteNextString(outFile, fmt.Sprintf(",%f", val.avgExec()))
+				} else {
+					utils.WriteNextString(outFile, ",")
+				}
+			}
+			utils.WriteNextString(outFile, "\n")
+		}
+		utils.WriteNextString(outFile, "\n")
+
 	}
-	utils.WriteNextString(outFile, "\n")
 }
 
-func appendIfNotPresent(slice []int, val int) []int {
-	for k := range slice {
+func appendIfNotPresentInt(slice []int, val int) []int {
+	for _, k := range slice {
 		if k == val {
 			return slice
 		}
