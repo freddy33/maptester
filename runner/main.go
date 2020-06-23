@@ -24,6 +24,16 @@ func main() {
 		maptester.GenAllData()
 	case "gen":
 		maptester.GenAllData()
+	case "analyze":
+		if len(os.Args) < 3 {
+			usage()
+			os.Exit(2)
+		}
+		filenames := make([]string, len(os.Args)-2)
+		for idx, _ := range filenames {
+			filenames[idx] = os.Args[idx+2]
+		}
+		maptester.AnalyzePerfFiles(filenames)
 	case "read":
 		if len(os.Args) < 3 {
 			usage()
@@ -49,5 +59,5 @@ func main() {
 
 func usage() {
 	fmt.Printf("Usage: $ maptester [command] (name) (options)\n" +
-		"\tcommand: help, show, clean, gen, regen, read [name], test\n")
+		"\tcommand: help, show, clean, gen, regen, read [name], test, analyze [list of file names]\n")
 }

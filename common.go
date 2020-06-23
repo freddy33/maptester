@@ -61,63 +61,6 @@ type MapPerfTestResult struct {
 	errorsSizeNotMatch          int32
 }
 
-type PerfLineIdx struct {
-	Idx  int    `csv:"idx"`
-	Name string `csv:"name"`
-}
-
-type PerfLineKey struct {
-	KeyType              string  `csv:"key type"`
-	InitRatio            float32 `csv:"init ratio"`
-	ConflictRatio        float32 `csv:"conflict ratio"`
-	ReadWriteThreadRatio float32 `csv:"r/w threads ratio"`
-	PercentMiss          float32 `csv:"percent miss"`
-	ReadWriteNbRatio     int     `csv:"r/w nb ratio"`
-	ValueSize            int     `csv:"value size"`
-	MapTypeName          string  `csv:"map type"`
-	NbLines              int     `csv:"nb lines"`
-	NbMapEntries         int     `csv:"nb map entries"`
-	NbWriteThreads       int     `csv:"nb write threads"`
-	NbReadThreads        int     `csv:"nb read threads"`
-	NbReadTest           int     `csv:"nb read done"`
-}
-
-type PerfLineMeasurement struct {
-	ExecDuration int64 `csv:"exec duration"`
-	MemoryUsage  int64 `csv:"memory usage"`
-	GCDone       int   `csv:"GC Done"`
-	Errors       int   `csv:"errors"`
-}
-
-type PerfLine struct {
-	PerfLineIdx
-	PerfLineKey
-	PerfLineMeasurement
-}
-
-type AggregateMeasurement struct {
-	count           int
-	totalLines      int64
-	totalMapEntries int64
-	totalReadDone   int64
-	PerfLineMeasurement
-}
-
-func (agg *AggregateMeasurement) addMeasurement(line PerfLine) {
-	agg.count++
-	agg.totalLines += int64(line.NbLines)
-	agg.totalMapEntries += int64(line.NbMapEntries)
-	agg.totalReadDone += int64(line.NbReadTest)
-	agg.ExecDuration += line.ExecDuration
-	agg.MemoryUsage += line.MemoryUsage
-	agg.GCDone += line.GCDone
-	agg.Errors += line.Errors
-}
-
-func (agg *AggregateMeasurement) display() {
-	fmt.Println(agg.count, float32(agg.ExecDuration)/float32(agg.totalReadDone+agg.totalLines), float32(agg.MemoryUsage)/float32(agg.totalMapEntries))
-}
-
 /********************************************
 MemUsage Functions
 *********************************************/

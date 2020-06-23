@@ -1,12 +1,10 @@
 package maptester
 
 import (
-	"encoding/csv"
 	"fmt"
 	"github.com/freddy33/maptester/utils"
 	"github.com/gocarina/gocsv"
 	"github.com/stretchr/testify/assert"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,11 +19,6 @@ func TestReadPerfExample(t *testing.T) {
 	defer utils.CloseFile(perfFile)
 
 	results := []*PerfLine{}
-	gocsv.SetCSVReader(func(reader io.Reader) gocsv.CSVReader {
-		r := csv.NewReader(perfFile)
-		r.Comma = ';'
-		return r
-	})
 	err = gocsv.UnmarshalFile(perfFile, &results)
 	if err != nil {
 		t.Fatalf("Unmarshall error on test example file %s due to %v", filename, err)
@@ -41,6 +34,7 @@ func TestReadPerfExample(t *testing.T) {
 	}
 	assert.Equal(t, int64(0), pos)
 	perfPerMap := make(map[string]*AggregateMeasurement)
+	aggregators := [3]*Aggregator{NewAggregator("basic"), NewAggregator("RWMutex"), NewAggregator("syncMap")}
 	err = gocsv.UnmarshalToCallback(perfFile, func(line PerfLine) {
 		fmt.Println(line.Idx, ":", line.Name)
 		perf, found := perfPerMap[line.MapTypeName]
@@ -49,6 +43,9 @@ func TestReadPerfExample(t *testing.T) {
 			perfPerMap[line.MapTypeName] = perf
 		}
 		perf.addMeasurement(line)
+		aggregators[0].addMeasurement(line)
+		aggregators[1].addMeasurement(line)
+		aggregators[2].addMeasurement(line)
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 3, perfPerMap["basic"].count)
@@ -58,10 +55,8 @@ func TestReadPerfExample(t *testing.T) {
 		fmt.Print(k + " : ")
 		v.display()
 	}
-	/*
-		w := csv.NewWriter(os.Stdout)
-		for i, l := range results {
-			fmt.Println(i, l.)
-		}
-	*/
+	for idx, agg := range aggregators {
+		fmt.Print(idx, ":")
+		agg.display()
+	}
 }
