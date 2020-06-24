@@ -57,6 +57,10 @@ func TestAll() bool {
 	allPass := true
 	perfTests := getAllRunnableTests()
 	totalTests := len(perfTests)
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(totalTests, func(i, j int) { perfTests[i], perfTests[j] = perfTests[j], perfTests[i] })
+
 	csvResultFile := openCsvFile(totalTests)
 	defer utils.CloseFile(csvResultFile)
 
