@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -189,9 +190,18 @@ func (agg *Aggregator) display() {
 }
 
 func AnalyzePerfFiles(fileNames []string) {
-	aggregators := [3]*Aggregator{NewAggregator("basic"), NewAggregator("RWMutex"), NewAggregator("syncMap")}
+	aggregators := [4]*Aggregator{NewAggregator("basic"),
+		NewAggregator("RWMutex"),
+		NewAggregator("syncMap"),
+		NewAggregator("fredMap"),
+	}
 	for _, filename := range fileNames {
-		file := filepath.Join(utils.GetOutPerfDir(), filename)
+		var file string
+		if strings.ContainsRune(filename, '/') {
+			file = filename
+		} else {
+			file = filepath.Join(utils.GetOutPerfDir(), filename)
+		}
 		addFileMeasurements(file, aggregators)
 	}
 
@@ -202,6 +212,7 @@ func AnalyzePerfFiles(fileNames []string) {
 		logger.Fatalf("cannot create analysis out file %q due to %v", analysisOutFile, err)
 	}
 	defer utils.CloseFile(outFile)
+	fmt.Println("Generating analysis out put in", analysisOutFile)
 
 	utils.WriteNextString(outFile, "Analysis for")
 	for _, filename := range fileNames {
@@ -256,7 +267,7 @@ func appendIfNotPresentInt(slice []int, val int) []int {
 	return append(slice, val)
 }
 
-func addFileMeasurements(file string, aggregators [3]*Aggregator) {
+func addFileMeasurements(file string, aggregators [4]*Aggregator) {
 	perfFile, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
@@ -266,6 +277,7 @@ func addFileMeasurements(file string, aggregators [3]*Aggregator) {
 		aggregators[0].addMeasurement(line)
 		aggregators[1].addMeasurement(line)
 		aggregators[2].addMeasurement(line)
+		aggregators[3].addMeasurement(line)
 	})
 	if err != nil {
 		log.Fatal(err)

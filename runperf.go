@@ -34,6 +34,9 @@ func getAllRunnableTests() []*MapPerfTestResult {
 				// skip cannot be used
 				continue
 			}
+			if mt.name != "basic" && mt.name != "fredMap" {
+				continue
+			}
 			use := rand.Float32() < RatioToRun
 			if use {
 				mp := MapPerfTestResult{

@@ -14,7 +14,8 @@ type MapType struct {
 var MapTypes = []MapType{
 	{"basic", false},
 	{"RWMutex", true},
-	{"syncMap", true}}
+	{"syncMap", true},
+	{"fredMap", true}}
 
 type MapKey interface {
 	Hash() int
@@ -37,8 +38,6 @@ type ConcurrentInt3Map interface {
 	Size() int
 }
 
-var nbMapTypes = 3
-
 func (mp *MapPerfTestResult) CreateMap() ConcurrentInt3Map {
 	switch mp.mapTypeName {
 	case "basic":
@@ -47,29 +46,12 @@ func (mp *MapPerfTestResult) CreateMap() ConcurrentInt3Map {
 		return &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, mp.mapInitSize)}
 	case "syncMap":
 		return &SyncIntMap{}
+	case "fredMap":
+		return MakeNonBlockConcurrentIntMap(mp.mapInitSize)
 	default:
 		log.Fatalf("Map type %q unknown", mp.mapTypeName)
 		return nil
 	}
-}
-
-func CreateAllMaps(initSize int, withNonConcurrent bool) []ConcurrentInt3Map {
-	nbMaps := nbMapTypes
-	if !withNonConcurrent {
-		nbMaps--
-	}
-	res := make([]ConcurrentInt3Map, nbMaps)
-
-	idx := 0
-	if withNonConcurrent {
-		res[idx] = &BasicNonConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
-		idx++
-	}
-	res[idx] = &BasicConcurrentIntMap{m: make(map[Int3Key]*TestMapValue, initSize)}
-	idx++
-	res[idx] = &SyncIntMap{}
-	idx++
-	return res
 }
 
 /********************************************
@@ -100,7 +82,7 @@ func (b *BasicNonConcurrentIntMap) SupportConcurrentWrite() bool {
 }
 
 func (b *BasicNonConcurrentIntMap) Name() string {
-	return "Basic Map No Concurrency"
+	return "Basic Int Map No Concurrency"
 }
 
 func (b *BasicNonConcurrentIntMap) Load(key Int3Key) (*TestMapValue, bool) {
@@ -144,7 +126,7 @@ func (b *BasicConcurrentIntMap) SupportConcurrentWrite() bool {
 }
 
 func (b *BasicConcurrentIntMap) Name() string {
-	return "Basic Concurrent Map using RWMutex"
+	return "Basic Int Concurrent Map using RWMutex"
 }
 
 func (b *BasicConcurrentIntMap) Load(key Int3Key) (*TestMapValue, bool) {
@@ -203,7 +185,7 @@ func (s *SyncIntMap) SupportConcurrentWrite() bool {
 }
 
 func (s *SyncIntMap) Name() string {
-	return "Concurrent map using sync.Map"
+	return "Concurrent Int Map using sync.Map"
 }
 
 func (s *SyncIntMap) Load(key Int3Key) (*TestMapValue, bool) {
